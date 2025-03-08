@@ -8,9 +8,18 @@ services:
     volumes:
       - mongodata:/data/db
   growthbook:
-    image: "growthbook/growthbook:latest"
+    image: "growthbook:v3"
     ports:
       - "3000:3000"
+    depends_on:
+      - mongo
+    environment:
+      - MONGODB_URI=mongodb://root:password@mongo:27017/growthbook?authSource=admin
+    volumes:
+      - uploads:/usr/local/src/app/packages/back-end/uploads
+  growthbook-backend:
+    image: "growthbook:v4"
+    ports:
       - "3100:3100"
     depends_on:
       - mongo

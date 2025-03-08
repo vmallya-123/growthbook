@@ -23,8 +23,13 @@ const env: EnvironmentInitValue = {
   ingestorOverride: "",
 };
 
+export function getBasePath(): string {
+  return '/app-growthbook/growthbook';
+}
+
 export async function initEnv() {
-  const res = await fetch("/api/init");
+  const basePath = getBasePath();
+  const res = await fetch(`${basePath}/api/init`);
   const json = await res.json();
   Object.assign(env, json);
 

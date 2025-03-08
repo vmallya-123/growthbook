@@ -11,6 +11,7 @@ module.exports = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  basePath: '/app-growthbook/growthbook',
   headers: () => [
     {
       source: "/(.*)",

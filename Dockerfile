@@ -25,6 +25,7 @@ RUN apt-get update && \
   apt-get install -yqq nodejs=$(apt-cache show nodejs|grep Version|grep nodesource|cut -c 10-) yarn && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
+
 # Copy over minimum files to install dependencies
 COPY package.json ./package.json
 COPY yarn.lock ./yarn.lock
@@ -34,24 +35,36 @@ COPY packages/sdk-js/package.json ./packages/sdk-js/package.json
 COPY packages/sdk-react/package.json ./packages/sdk-react/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY patches ./patches
+
 # Yarn install with dev dependencies (will be cached as long as dependencies don't change)
 RUN yarn install --frozen-lockfile --ignore-optional
 # Apply patches this is not ideal since this should run at the end of yarn install but since node 20 it is not
 RUN yarn postinstall
-# Build the app and do a clean install with only production dependencies
-COPY packages ./packages
-RUN \
-  yarn build \
-  && rm -rf node_modules \
-  && rm -rf packages/back-end/node_modules \
-  && rm -rf packages/front-end/node_modules \
-  && rm -rf packages/front-end/.next/cache \
-  && rm -rf packages/shared/node_modules \
-  && rm -rf packages/sdk-js/node_modules \
-  && rm -rf packages/sdk-react/node_modules \
-  && yarn install --frozen-lockfile --production=true --ignore-optional
-RUN yarn postinstall
 
+# Copy source files
+COPY packages ./packages
+
+# Set higher memory limit for Node
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+
+# Build dependencies first
+RUN yarn build:deps
+
+# Build backend and frontend separately
+RUN cd packages/back-end && yarn build
+RUN cd packages/front-end && yarn build
+
+# Clean up and install production dependencies
+RUN rm -rf node_modules \
+    && rm -rf packages/back-end/node_modules \
+    && rm -rf packages/front-end/node_modules \
+    && rm -rf packages/front-end/.next/cache \
+    && rm -rf packages/shared/node_modules \
+    && rm -rf packages/sdk-js/node_modules \
+    && rm -rf packages/sdk-react/node_modules \
+    && yarn install --frozen-lockfile --production=true --ignore-optional
+
+RUN yarn postinstall
 
 # Package the full app together
 FROM python:${PYTHON_MAJOR}-slim
@@ -79,8 +92,10 @@ COPY buildinfo* ./buildinfo
 COPY --from=pybuild /usr/local/src/app/dist /usr/local/src/gbstats
 RUN pip3 install /usr/local/src/gbstats/*.whl
 # The front-end app (NextJS)
-EXPOSE 3000
-# The back-end api (Express)
 EXPOSE 3100
+
 # Start both front-end and back-end at once
-CMD ["yarn","start"]
+ENV START_SERVICE=backend
+
+# Modify the CMD to use a script or conditional start
+CMD ["sh", "-c", "if [ \"$START_SERVICE\" = \"frontend\" ]; then yarn start:frontend-with-tracing; elif [ \"$START_SERVICE\" = \"backend\" ]; then yarn start:backend-with-tracing; else yarn start; fi"]
